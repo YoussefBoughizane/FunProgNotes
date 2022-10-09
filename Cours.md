@@ -347,7 +347,7 @@ end NonEmpty
    	def union(other : Inset): Intset = other 
    class NonEmpty((elem: Int, left: IntSet, right: IntSet)) extends Inset : 
    	... 
-   	def union(other : Inset ): Intset = l.union(r).union(that).incl(elem)
+   	def union(other : Inset ): Intset = lelf.union(right).union(that).incl(elem)
    
    // Why does this terminate ? Union is called with strictly smaller sets each time so union( "an empty set " ) will be called at some point.   
    ```
@@ -517,4 +517,224 @@ f.apply(7)
 ```
 
 
+
+## Week 4 :
+
+### Decomposition : 
+
+​		`Expr`				Suppose you want to write a small interpreter for arithmetic 		
+
+​		/ 	\				expressions. 
+
+`Number`	`Sum`		`Sum(Number(1) , Number(2)).eval` = 3
+
+```scala
+trait Expr : 
+    def eval(e: Expr): Int =
+        if e.isNumber then e.numValue
+        else if e.isSum then eval(e.leftOp) + eval(e.rightOp)
+        else throw Error(”Unknown expression ” + e)
+	
+```
+
+1. `isNumber`, `isSum` gets quickly gets tedious when adding other datatypes . 
+2. There's no static guarantee you use the right accessor functions.
+   You might hit an Error case if you are not careful. 
+
+**Non solution :Type Tests and Type casts**
+
+ use `def isInstanceOf[T]: Boolean` to type *test* and `def asInstanceOf[T]: T` to cast. 
+
+Their use in Scala is discouraged, because there are better alternatives
+
+**Solution 1 : Object Oriented Decomposition** 
+
+```scala
+trait Expr:
+def eval: Int
+class Number(n: Int) extends Expr:
+	def eval: Int = n
+class Sum(e1: Expr, e2: Expr) extends Expr:
+	def eval: Int = e1.eval + e2.eval
+```
+
+▶ OO decomposition mixes data with operations on the data.
+▶Good for encapsulation and data abstraction.
+▶Dependencies between classes => Increases **Complexity**. 
+▶ It makes it easy to add new kinds of data but **hard** to add new kinds
+of operations.
+
+OO decomposition only works well if operations are on a single object.
+NOT for expressions of type  `a * b + a * c -> a * (b + c)` 
+
+#### Solution : Pattern Matching : 
+
+```scala
+def eval(e: Expr): Int = e match
+    case Number(n) => n // pattern => expression 
+    case Sum(e1, e2) => eval(e1) + eval(e2) 
+```
+
+A `MatchError` exception is thrown if no pattern matches the value of
+the selector.
+
+To be able to do pattern matching `Number` and `Sum` should be **case classes**. 
+
+```scala
+trait Expr
+case class Number(n: Int) extends Expr
+case class Sum(e1: Expr, e2: Expr) extends Expr
+```
+
+
+
+### Lists and more pattern matching : 
+
+▶ the empty list `Nil`, and
+▶ the construction operation `::` (pronounced cons):
+`x :: xs` gives a new list with the first element x, followed by the elements of `xs`
+
+```scala
+val fruit: List[String] = List(”apples”, ”oranges”, ”pears”)
+fruit = ”apples” :: (”oranges” :: (”pears” :: Nil)) // similar 
+```
+
+**Right associativity convention** :  Operators ending in “:” associate to the right.
+`A :: B :: C` is interpreted as `A :: (B :: C).`
+
+All operations on lists can be expressed in terms of the following three:
+
+* `head` the first element of the list
+* `tail` the list composed of all the elements except the first.
+* `isEmpty` true if the list is empty, false otherwise	.
+
+
+
+example of using lists and pattern matching : 
+
+```scala
+def isort(xs: List[Int]): List[Int] = xs match
+    case List() => List()
+    case y :: ys => insert(y, isort(ys))
+
+def insert(x: Int, xs: List[Int]): List[Int] = xs match
+    case List() => List(x)
+    case y :: ys => if x > y then y :: insert(x,ys) else x :: xs 
+```
+
+
+
+### Enum : 
+
+```scala
+Here’s our case class hierarchy for expressions again:
+trait Expr
+object Expr:
+    case class Var(s: String) extends Expr
+    case class Number(n: Int) extends Expr
+    case class Sum(e1: Expr, e2: Expr) extends Expr
+```
+
+This is so common is scala that there's a shorthand for that. 
+
+```scala
+enum Expr:
+    case Var(s: String)
+    case Number(n: Int)
+    case Sum(e1: Expr, e2: Expr)
+    case Prod(e1: Expr, e2: Expr)
+```
+
+There's more to Enumeration , they can take parameters and can define methods.
+
+ ```scala
+ enum Direction(val dx: Int, val dy: Int):
+     case Right extends Direction( 1, 0)
+     case Up extends Direction( 0, 1)
+     case Left extends Direction(-1, 0)
+     case Down extends Direction( 0, -1)
+ def leftTurn = Direction.values((ordinal + 1) % 4)
+ end Direction	
+ 
+ val r = Direction.Right
+ val u = x.leftTurn // u = Up
+ val v = (u.dx, u.dy) // v = (1, 0)
+ ```
+
+
+
+### Type Bounds : 
+
+`assertPos` should return the set itself if all elements are positive and throw 
+`exception` otherwise. 
+
+```scala
+def assertAllPos(s: IntSet): IntSet
+```
+
+The above definition doesn't show that `assertAllPos` of an `Empty` returns an `Empty` and `assertAllPos` of `NonEmpty` returns an `NonEmpty` . There's better : 
+
+```scala
+def assertAllPos[S <: IntSet](r: S): S = ...
+```
+
+Here,  `<: IntSet` is an upper bound of the type parameter S. 
+
+▶ `S <: T` means: S is a **subtype** of T, and
+▶ `S >: T` means: S is a **supertype** of T, or T is a subtype of S.
+
+We can *mix* them : `[S >: NonEmpty <: IntSet]`
+
+> **The Liskov Substitution Principle**
+>
+> If A <: B, then everything one can to do with a value of type B
+> one should also be able to do with a value of type A.
+
+
+
+### Variance : 
+
+Given: `NonEmpty <: IntSet`is`List[NonEmpty] <: List[IntSet]` ? yes. 
+
+when  `A <: B => C[A] <: C[B]` we call `C[T]` **covariant**. 
+
+
+
+Does this work for all types ? let's consider `Arrays` (**mutable**)
+
+```scala
+val a: Array[NonEmpty] = Array(NonEmpty(1, Empty(), Empty()))
+val b: Array[IntSet] = a // TYPE ERROR HEERE
+b(0) = Empty() // CAN DO WITH ARRAY[INTSET] BUT NOT WITH ARRAY[NONEMPTY] 
+val s: NonEmpty = a(0)
+```
+
+Type Error Line 2 : `Array[NonEmpty]` not a subtype of `Array[Inset]`. 
+
+Why ? Because otherwise it would contradict *Liskov Principle* **not** all you can do with `Array[Inset]`, you can do with `Array[NonEmpty]`. (Line 3,4) 
+
+
+
+Say `C[T]` is a parameterized type and A, B are types such that `A <: B`.
+
+* `C[A] <: C[B]` C is **covariant** (e.g`List`)
+* `C[A] >: C[B]` C is **contravariant** 
+* neither `C[A]` nor `C[B]` is a subtype of the other C is **nonvariant** (e.g `Array`)
+
+```scala
+class C[+A] { ... } C is covariant
+class C[-A] { ... } C is contravariant
+class C[A] { ... } C is nonvariant
+```
+
+> **Function types :** 
+>
+> `A1 => B1 <: A2 => B2` because `A2 <: A1 and B1 <: B2`. 
+>
+> **Covariant** in return type. **Variant** in input type
+
+```scala
+trait Function1[-T, +U]:
+	def apply(x: T): U
+```
 
