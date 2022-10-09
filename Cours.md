@@ -608,8 +608,6 @@ All operations on lists can be expressed in terms of the following three:
 * `tail` the list composed of all the elements except the first.
 * `isEmpty` true if the list is empty, false otherwise	.
 
-
-
 example of using lists and pattern matching : 
 
 ```scala
