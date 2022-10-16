@@ -736,3 +736,201 @@ trait Function1[-T, +U]:
 	def apply(x: T): U
 ```
 
+
+
+## Week 5 : 
+
+### List methods : 
+
+`xs.length`, `xs(n) <=> xs.apply(n)` , `xs.reverse` , `xs.updated(n, x) ` , `xs.indexOf(x)` (returns -1 if  `x` not in `xs`) , `xs.contains(x)`. 
+
+| Creating new Lists | All of the following are LINEAR                              |
+| :----------------- | :----------------------------------------------------------- |
+| `xs.last`          | The list's last element, exception if `xs` is empty.         |
+| `xs.take(n)`       | A list consisting of the first n elements of `xs`, or `xs` itself if it is shorter than n. |
+| `xs.drop(n)`       | The rest of the collection after taking n elements.          |
+| `xs ++ ys `        | Concatenation.                                                            `def ++ (ys: List[T]):  List[T] = xs match                           case Nil => ys                                                              case x :: xs1 => x :: (xs1 ++ ys)` |
+| `xs(n) `           | (or, written out, `xs.apply(n)`). The element of `xs` at index n.` |
+| ` splitAt(n)`      | pair of : (`xs[1 to n]` , `xs[n to xs.length]` )             |
+
+#### Simple merge sort implementation : 
+
+```scala
+def msort[T](xs: List[T])( (T, T) => Boolean ): List[T] =
+    val n = xs.length / 2
+    if n == 0 then xs
+    else
+		def merge[T](xs: List[T], ys: List[T]) = (xs,ys) match 
+			case (Nil,ys) => ys 
+			case (xs,Nil) => xs 
+			case (x :: xs1 , y :: ys1 ) => 
+				if lt(x,y) then x :: merge(xs1,ys)
+				else y :: merge(xs,ys1) 
+
+        val (fst, snd) = xs.splitAt(n)
+        merge(msort(fst), msort(snd))
+
+```
+
+`lt :  (T, T) => Boolean ` is a comparison function. 
+
+  **Pairs  : **
+
+```scala
+val label = pair._1
+val value = pair._2
+
+val (label, value) = pair
+```
+
+#### Filtering and mapping : 
+
+| methods            | all LINEAR                                                   |
+| ------------------ | ------------------------------------------------------------ |
+| `xs.filter(p)`     | Elements of `xs` verifying `p.`                              |
+| `xs.filterNot`     | Same as `xs.filter(x => !p(x))`;                             |
+| `xs.partition(p)`  | Same as `(xs.filter(p), xs.filterNot(p))`, but computed in a single traversal of the list `xs` |
+| `xs.takeWhile(p) ` | The longest prefix of list `xs` consisting of elements that all satisfy the predicate `p`. |
+| `xs.dropWhile(p)`  | The remainder of the list `xs` after any leading elements satisfying `p` have been removed. |
+| `xs.span(p)`       | Same as `(xs.takeWhile(p), xs.dropWhile(p))` but computed in a single traversal of the list `xs`. |
+| `xs.map`           | create a with `f` to all elements of `xs`.                   |
+
+#### Reductions  :
+
+Combining elements of lists with a given operator. 
+
+```scala
+def sum(xs: List[Int]) = (0 :: xs).reduceLeft((x, y) => x + y)
+
+([0,xs1,xs2,...,xsn])
+=> [ 0+xs1 , xs2 , ... , xsn ]
+=> [ 0+xs1+xs2 , ... , xsn ]
+=> 0+xs1+xs2+...+xsn 
+
+```
+
+In more generality: `List(x1, ..., xn).reduceLeft(op) = x1.op(x2). ... .op(xn)`
+
+In the same way there's `reduceRight` : 
+
+`List(x1, ..., x{n-1}, xn).reduceRight(op) = x1.op(x2.op( ... (x{n-1}.op(xn)) )`
+
+**FoldLeft : ** 
+
+```scala
+def reduceLeft(op: (T, T) => T): T = this match
+    case Nil => throw IllegalOperationException(”Nil.reduceLeft”)
+    case x :: xs => xs.foldLeft(x)(op)
+// takes an accumulator 
+def foldLeft[U](z: U)(op: (U, T) => U): U = this match
+    case Nil => z
+    case x :: xs => xs.foldLeft(op(z, x))(op)
+
+```
+
+<img src="C:\Users\XPS13\AppData\Roaming\Typora\typora-user-images\image-20221016112255630.png" alt="image-20221016112255630" style="zoom:50%;" />
+
+**FoldRight:**
+
+```scala
+def reduceRight(op: (T, T) => T): T = this match
+    case Nil => throw UnsupportedOperationException(”Nil.reduceRight”)
+    case x :: Nil => x
+    case x :: xs => op(x, xs.reduceRight(op)) 
+// takes an accumulator 
+def foldRight[U](z: U)(op: (T, U) => U): U = this match
+    case Nil => z
+    case x :: xs => op(x, xs.foldRight(z)(op))
+```
+
+<img src="C:\Users\XPS13\AppData\Roaming\Typora\typora-user-images\image-20221016112519352.png" alt="image-20221016112519352" style="zoom:40%;" />
+
+`FoldLeft` and `FoldRight` are equivalent  when `op` is associative and commutative.  
+
+`FoldLeft` is `tailrec` so more efficient . 
+
+**FoldLeft/FoldRight are very useful :**
+
+```scala
+def concat[T](xs: List[T], ys: List[T]): List[T] = 
+	xs.foldRight( ys )(_::_)
+```
+
+```scala
+def reverse[a](xs: List[T]): List[T] = 
+	xs.foldLeft( List[T]() ) ( ( x , zs ) => x :: zs )
+
+// List[T]()  is neccesary for type inference
+```
+
+```scala
+def mapFun[T, U](xs: List[T], f: T => U): List[U] = 
+	xs.foldLeft( List[T]()  )( (x,z) => f(x)::z )
+def lengthFun[T](xs: List[T]): Int =
+	xs.foldRight(0)((y, n) => n + 1)
+
+```
+
+
+
+### Structural Induction : 
+
+We would like to verify that concatenation is associative, and that it
+admits the empty list Nil as neutral element to the left and to the right:
+
+```scala
+(xs ++ ys) ++ zs = xs ++ (ys ++ zs)
+xs ++ Nil = xs
+Nil ++ xs = xs
+```
+
+
+
+We will use *Structural Induction*  : To prove a property `P(xs)` for all lists `xs`, 
+
+* show that `P(Nil)` holds (base case), 
+
+* for a list `xs` and some element x, show the induction step: if `P(xs)` holds, then `P(x :: xs)` also holds
+
+recall the implementation of `++` : 
+
+```scala
+extension [T](xs: List[T]
+def ++ (ys: List[T]) = xs match
+    case Nil => ys
+    case x :: xs1 => x :: (xs1 ++ ys) 
+```
+
+two facts : 
+
+1. `Nil ++ ys` 	= 	`ys` 
+2. `(x :: xs1) ++ ys` = ` x :: (xs1 ++ ys) `
+
+*Proof : Induction on `xs`*
+
+* **base case** :  Nil 
+
+  (Nil ++ ys) ++ zs = ys ++ zs  by 1st clause 
+
+  Nil ++ ( ys ++ zs ) = ys ++ zs also by 1st clause 
+
+* **Inductive step : ** suppose (xs ++ ys) ++ zs = xs ++ (ys ++ zs) holds , prove it on x :: xs 
+
+  on LHS : 
+
+​		((x :: xs) ++ ys) ++ zs 
+
+​		= (x :: (xs ++ ys)) ++ zs // by 2nd clause of ++ 
+
+​		= x :: ((xs ++ ys) ++ zs) // by 2nd clause of ++ 
+
+​		= x :: (xs ++ (ys ++ zs)) // by induction hypothesis
+
+​		on RHS : 
+
+​		(x :: xs) ++ (ys ++ zs) 
+
+​		= x :: (xs ++ (ys ++ zs)) // by 2nd clause of ++
+
+
+
