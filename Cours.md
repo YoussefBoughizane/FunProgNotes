@@ -793,7 +793,7 @@ val (label, value) = pair
 | `xs.takeWhile(p) ` | The longest prefix of list `xs` consisting of elements that all satisfy the predicate `p`. |
 | `xs.dropWhile(p)`  | The remainder of the list `xs` after any leading elements satisfying `p` have been removed. |
 | `xs.span(p)`       | Same as `(xs.takeWhile(p), xs.dropWhile(p))` but computed in a single traversal of the list `xs`. |
-| `xs.map`           | create a with `f` to all elements of `xs`.                   |
+| `xs.map`           | create a new list with `f` applied to all elements of `xs`.  |
 
 #### Reductions  :
 
@@ -933,4 +933,192 @@ two facts :
 ​		= x :: (xs ++ (ys ++ zs)) // by 2nd clause of ++
 
 
+
+## Week 6 : 
+
+### Collections : 
+
+Collection Hierarchy :
+
+<img src="C:\Users\XPS13\OneDrive\Documents\EPFL\BA3\CS210-FP\Notes\FunProgNotes\assets\image-20221023152833877.png" alt="image-20221023152833877" style="zoom:67%;" />
+
+#### Arrays and String :
+
+* Arrays and Strings support the same operations as `Seq` (`filter`,`map` ... )
+
+* They cannot be subclasses of `Seq` because they come from Java. 
+
+#### Sequences : 
+
+**Range** : 
+
+```scala
+val r: Range = 1 until 5 // 5 EXCLUDED
+val s: Range = 1 to 5 // 5 INCLUDED
+1 to 10 by 3 // 3 IS THE STEP 
+6 to 1 by -2 
+```
+
+**Vector : ** 
+
+`List` has *linear* time access : Access to the middle element is slower than first... 
+
+  On the contrary, `Vector` has similar access time for all its elements. 
+
+<img src="C:\Users\XPS13\OneDrive\Documents\EPFL\BA3\CS210-FP\Notes\FunProgNotes\assets\image-20221023153620383.png" alt="image-20221023153620383" style="zoom:50%;" />
+
+It is implement (as shown above) in the following way : (n=number of elements)
+
+* if n <= 32 then it is an array of 32 elements
+* if n <= 32*32 then it is an array of 32 elements each containing an array of 32 elements . 
+* if n <= 32 *32 *32 : array of array of array 
+
+
+
+| **Sequence operations : **                  |                                                              |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| `xs.exists(p)`                              | true if there is an element x of xs such that p(x) holds, false otherwise. |
+| `xs.forall(p)`                              | true if p(x) holds for all elements x of `xs`, false otherwise. |
+| `xs.zip(ys)`                                | A sequence of pairs drawn from corresponding elements of sequences xs and ys. |
+| `xs.unzip`                                  | Splits a sequence of pairs `xs` into two sequences consisting of the first, respectively second halves of all pairs. |
+| `xs.flatMap(f)`                             | Applies collection-valued function f to all elements of `xs` and concatenates the results.                                                      `xs.flatMap(f) = xs.map(f).flatten` |
+| `xs.sum` , `xs.product` , `xs.max`,`xs.min` | the sum,product,min and max                                  |
+
+Examples showing use of `seq` operations for conciseness  : 
+
+```scala
+def scalarProduct(xs: Vector[Double], ys: Vector[Double]): Double =
+	xs.zip(ys).map(_ * _).sum
+
+def isPrime(n: Int): Boolean =
+(2 to n - 1).forall(d => n % d == 0)
+```
+
+### Combinatorial Search and For-Expressions :
+
+**Generate all pairs ( i , j ) 1 <= j < i <= n :** 
+
+```scala
+(1 until n).flatMap(i =>
+	(1 until i).map(j => (i, j)))
+```
+
+`For` helps for more conciseness and clarity : 
+
+```scala
+for
+i <- 1 until n
+j <- 1 until i
+if isPrime(i + j)
+yield (i, j)
+
+// THIS RETURNS A LIST OF THE (i,j)
+```
+
+> **IMPORTANT**
+>
+> The for-expression maybe seem similar to loops in imperative languages, except that it **builds a list** of the results of all iterations.
+
+**For and If : **
+
+```scala
+for p <- persons if p.age > 20 yield p.name
+// EQUIVALENT TO 
+persons
+.filter(p => p.age > 20)
+.map(p => p.name)
+```
+
+> **IMPORTANT 2 :** for
+> `i <- 1 until n`
+> `j <- 1 until n` 
+>
+> is equivalent to **nested** loops. 
+
+```scala
+def scalarProduct(xs: List[Double], ys: List[Double]) : Double =
+(for (x, y) <- xs.zip(ys) yield x * y).sum
+
+NOT EQUIVALENT TO 
+
+(for x <- xs; y <- ys yield x * y).sum // HERE ALL PAIRS (X,Y) are considered
+```
+
+#### Maps : 
+
+Class `Map[Key, Value]` extends the collection type `Iterable[(Key, Value)]`.
+
+```scala
+val romanNumerals = Map(”I” -> 1, ”V” -> 5, ”X” -> 10)
+val capitalOfCountry = Map(”US” -> ”Washington”, ”Switzerland” -> ”Bern”)
+```
+
+The syntax `key -> value` is just an alternative way to write the pair `(key, value)`.
+
+`toList`  on a `Map` produces a `List` of pairs `(key,value)` .
+
+**Query on map :** 
+
+```scala
+capitalOfCountry(”Andorra”)
+// java.util.NoSuchElementException: key not found: Andorra
+
+capitalOfCountry.get(”US”) // Some(”Washington”)
+capitalOfCountry.get(”Andorra”) // None
+
+```
+
+* The `Option` type : 
+
+```scala
+trait Option[+A]
+    case class Some[+A](value: A) extends Option[A]
+    object None extends Option[Nothing]
+```
+
+we can decompose the `Option`type with pattern matching : 
+
+```scala
+def showCapital(country: String) = 								capitalOfCountry.get(country) match
+	case Some(capital) => capital
+	case None => ”missing data”
+
+
+showCapital(”US”) // ”Washington”
+showCapital(”Andorra”) // ”missing data”
+```
+
+* Updates : 
+
+  * `m + (k -> v)`  : The map that takes key `k`‘ to value `v` and is otherwise equal to `m`  . 
+
+  * `m ++ kvs` The map `m` updated via `+` with all key/value pairs in `kvs`.
+
+    ```scala
+    val m1 = Map(”red” -> 1, ”blue” -> 2) // > m1 = Map(red -> 1, blue -> 2)
+    val m2 = m1 + (”blue” -> 3) // > m2 = Map(red -> 1, blue -> 3)
+    val m3 = m1 ++  (”blue” -> 0 ,  ”yellow” -> 4) // m2 = Map(red -> 1, blue -> 0 , yellow -> 4 )
+    ```
+
+  * `m - k` : The map `m`without key `k`. 
+
+* Default values : ` capitalOfCountry.withDefaultValue( v )` producues a new map that has `v` as defaut value.  
+
+Example use of maps on `Polynoms` ( `+` operation ) : 
+
+```scala
+class Polynom(nonZeroTerms: Map[Int, Double]):
+
+    def terms = nonZeroTerms.withDefaultValue(0.0) 
+	// ===== Solution 1 : More efficient 
+	def + (other: Polynom) =
+        Polynom(other.terms.foldLeft(terms)(addTerm))
+	def addTerm(terms: Map[Int, Double], term: (Int, Double)) =
+		val (exp, coeff) = term
+		terms + (exp, coeff + terms(exp))
+	// ===== Solution 2 : More concise  
+	def + (other: Polynom) =
+		Polynom(terms ++ other.terms.map((exp, coeff) 
+                                         => (exp, terms(exp) + coeff)))
+```
 
