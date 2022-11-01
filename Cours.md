@@ -727,9 +727,9 @@ class C[A] { ... } C is nonvariant
 
 > **Function types :** 
 >
-> `A1 => B1 <: A2 => B2` because `A2 <: A1 and B1 <: B2`. 
+> `A1 => B1 <: A2 => B2` if`A2 <: A1 and B1 <: B2`. 
 >
-> **Covariant** in return type. **Variant** in input type
+> **Covariant** in return type. **Contravariant** in input type
 
 ```scala
 trait Function1[-T, +U]:
@@ -1019,6 +1019,8 @@ yield (i, j)
 >
 > The for-expression maybe seem similar to loops in imperative languages, except that it **builds a list** of the results of all iterations.
 
+The type of the sequence returned by the for loop **is the type of the sequence on which the first for loop is applied.**
+
 **For and If : **
 
 ```scala
@@ -1120,5 +1122,422 @@ class Polynom(nonZeroTerms: Map[Int, Double]):
 	def + (other: Polynom) =
 		Polynom(terms ++ other.terms.map((exp, coeff) 
                                          => (exp, terms(exp) + coeff)))
+```
+
+
+
+
+
+## Week 7 : 
+
+### Queries with For : 
+
+We can use `for` to query information instead of using a combination of `filter` , `map` and `mapReduce`. 
+
+Suppose we have `val books: List[Book]` a list of `Book(title,authors)`.
+
+`authors` is a list of names (`string`).
+
+Query the name of all the authors that have more than a book: 
+
+```scala
+for
+    b1 <- books
+    b2 <- books
+    if b1 != b2
+    a1 <- b1.authors
+    a2 <- b2.authors
+    if a1 == a2
+yield a1
+
+// if authors a1="Daniel" wrote b1 and b2 this will return 
+// List("Daniel","Daniel") because it considers (b1,b2) and (b2,b1)
+
+// SOLUTION 1 : use the function distinct 
+val repeated =
+for
+    b1 <- books
+    b2 <- books
+    if b1.title < b2.title
+    a1 <- b1.authors
+    a2 <- b2.authors
+    if a1 == a2
+yield a1
+repeated.distinct
+
+```
+
+*Better alternative :* for returns a sequence of the same type as the sequence we iterate over. so Iterate over set => result will be a set. 
+
+````scala
+val bookSet = books.toSet
+    for
+    b1 <- bookSet
+    b2 <- bookSet
+    if b1 != b2
+    a1 <- b1.authors
+    a2 <- b2.authors
+    if a1 == a2
+    yield a1
+````
+
+ 
+
+### How are FOR expressions translated ? 
+
+3 rules : 
+
+1.  `for x <- e1 yield e2` is translated to `e1.map(x => e2)`
+
+2. `for x <- e1 if f; s yield e2` is translated to `for x <- e1.withFilter(x => f); s yield e2`
+
+   * `s`is a (possibly empty) sequence of generators (`for`)and filters(`if`).
+
+   * `withFilter` is a variation of `filter` than doesn't produce a new list but instead just executes the next `map/flatMap ` on elements that pass the filter. 
+   
+3. `for x <- e1; y <- e2; s yield e3` is translated to `e1.flatMap(x => for y <- e2; s yield e3)`
+
+Example : 
+
+```scala
+for b <- books; a <- b.authors if a.startsWith("Bird")
+yield b.title
+=> 
+books.flatMap( b => for a <- b.authors if a.startsWith("Bird") yield b.title)
+
+=> books.flatMap( b => 
+              for a <- b.authors.withFilter(a=>a.startsWith("Bird")) 
+              yield b.title)
+
+=> books.flatMap(b=>b.authors.withFilter(a=>a.startsWith("Bird")).
+                 map(a=>b.title))
+
+```
+
+### Generalizing for expressions : 
+
+Interestingly, the translation of for is not limited to lists or sequences, or even collections . 
+
+The presence of `map`,`flatMap`and `withFilter` suffices to be able to use `for` on some type. 
+
+#### Example : random value generator : 
+
+we know how to generate a random number with the Java library : 
+
+```scala
+val rand = java.util.Random()
+rand.nextInt()
+```
+
+Let's define a trait `Generator[T]` that generates random values of type `T`:
+
+```scala
+trait Generator[+T]: 
+	def generate(): T
+```
+
+* we will instantiate it to create a random `Int` generator : 
+
+```scala
+val integers = new Generator[Int]:
+	val rand = java.util.Random()
+	def generate() = rand.nextInt()
+// this creates a subclass of Generator and instanciates it 
+```
+
+* `Boolean` generator : 
+
+```scala
+val booleans = new Generator[Boolean]:
+	def generate() = integers.generate() > 0
+```
+
+* `pairs`generator : 
+
+  ```scala
+  val pairs = new Generator[(Int, Int)]:
+  	def generate() = (integers.generate(), integers.generate())
+  ```
+
+How to avoid `Generator...`code ? 
+
+```scala
+val booleans = for x <- integers yield x > 0 // we would like to write this
+```
+
+so we need to define `map`and `flatMap` for that
+
+```scala
+trait Generator[+T]:
+	def generate(): T
+
+extension [T, S](g: Generator[T])
+
+	def map(f: T => S) = new Generator[S]:
+		def generate() = f(g.generate())
+
+	def flatMap(f: T => Generator[S]) = new Generator[S]:
+		def generate() = f(g.generate()).generate()
+```
+
+we can know write :
+
+```scala
+val booleans = for x <- integers yield x > 0 // which translates to 
+val booleans = integers.map ( x => x>0 ) // which translates to
+val booleans = new Generator[Boolean]:
+	def generate() = integers.generate() > 0 
+```
+
+**More generators: **
+
+```scala
+def single[T](x: T): Generator[T] = new Generator[T]:
+	def generate() = x
+
+def range(lo: Int, hi: Int): Generator[Int] =
+	for x <- integers yield lo + x.abs % (hi - lo)
+
+def oneOf[T](xs: T*): Generator[T] =
+	for idx <- range(0, xs.length) yield xs(idx)
+
+def lists: Generator[List[Int]] =
+    for
+        isEmpty <- booleans // randomly check if our list should be empty
+        list <- if isEmpty then emptyLists else nonEmptyLists 
+    yield list
+
+
+def nonEmptyLists =
+for
+    head <- integers // first element is random 
+	tail <- lists	// rest of the list is random ( maybe empty)
+yield head :: tail
+
+```
+
+**Application : ** 
+
+▶ Come up with some some test inputs to program functions and a postcondition. 
+
+▶ The postcondition is a property of the expected result. 
+
+▶ Verify that the program satisfies the postcondition.
+
+```scala
+def test[T](g: Generator[T], numTimes: Int = 100)(test: T => Boolean): Unit =
+	for i <- 0 until numTimes do
+		val value = g.generate()
+		assert(test(value), s”test failed for $value”)
+	println(s”passed $numTimes tests”)
+```
+
+```scala
+test(pairs(lists,lists))(
+    (l1,l2) => l1.size + l2.size == concat(l1 , l2).size
+)
+// tests if concat preserve the property of the sizes 
+// if this test fails it means concat has a bug 
+```
+
+**Scala check : ** 
+
+```scala
+forAll { (l1: List[Int], l2: List[Int]) =>
+	l1.size + l2.size == (l1 ++ l2).size
+}
+```
+
+### Monalds : 
+
+Data structures with `map` and `flatMap` seem to be quite common. 
+
+These types of data structures are called `Monalds`: 
+
+```scala
+extension [T, U](m: M[T])
+	def flatMap(f: T => M[U]): M[U]
+
+def unit[T](x: T): M[T]
+```
+
+Why `unit`? 
+
+let's look at how to implement `map`with the help of `flatMap`
+
+```scala
+m.map(f) == m.flatMap(x => unit(f(x)))
+		== m.flatMap(f andThen unit)
+
+```
+
+* `List` is a monad with `unit(x) = List(x)` 
+
+* `Set` is monad with `unit(x) = Set(x)` 
+*  `Option` is a monad with `unit(x) = Some(x)`
+* `Generator` is a monad with `unit(x) = single(x)`
+
+
+
+#### Monad Laws :
+
+To qualify as a monad, a type has to satisfy three laws: 
+
+1. **Associativity:** `m.flatMap(f).flatMap(g) == m.flatMap(f(_).flatMap(g))` 
+
+   ​	(  `==m.flatMap(x=>f(x).flatMap(g))`   )
+
+2. **Left unit :** `unit(x).flatMap(f) == f(x)` 
+
+3. **Right unit :** `m.flatMap(unit) == m`
+
+
+
+*Let's check these rules for Option*
+
+ ````scala
+ extension [T](xo: Option[+T])
+     def flatMap[U](f: T => Option[U]): Option[U] = xo match
+     case Some(x) => f(x)
+     case None => None
+ ````
+
+* Left Unit : 
+
+  ```scala
+  Some(x).flatMap(f) = Some(x) match case Some(x) =>f(x) case ... 
+  = f(x)
+  ```
+
+* Right Unit : 
+
+  ````scala
+  opt.flatMap(Some(x))
+  = 	opt match
+      case Some(x) => Some(x)
+      case None => None  
+  = opt
+  ````
+
+* Associativity : 
+
+  ```scala
+  opt.flatMap(f).flatMap(g)
+  == (opt match { case Some(x) => f(x) case None => None }) // flatMap(f)
+  	match { case Some(y) => g(y) case None => None }
+  
+  == opt match
+      case Some(x) =>
+      	f(x) match { case Some(y) => g(y) case None => None }
+      case None =>
+      	None match { case Some(y) => g(y) case None => None }
+  
+  == opt match
+  case Some(x) =>
+      f(x) match 
+      { case Some(y) => g(y) case None => None } // flatMap (g)
+   case None => None
+  
+  == opt match
+      case Some(x) => f(x).flatMap(g)
+      case None => None
+  ```
+
+  ```scala
+  == opt match
+  	case Some(x) =>
+  		f(x) match { case Some(y) => g(y) case None => None }
+  	case None => None
+  == opt match
+  	case Some(x) => f(x).flatMap(g)
+  	case None => None
+  == opt.flatMap(x => f(x).flatMap(g)) 
+  ```
+
+  
+
+**Importance of these laws :** 
+
+1. Associativity says essentially that one can “inline” nested for
+    expressions : 
+
+  ```scala
+  for
+      y <- for x <- m; y <- f(x) yield y
+      z <- g(y)
+  	yield z
+  == for x <- m; y <- f(x); z <- g(y)
+  	yield z
+  ```
+
+2.  Right unit says: 
+
+    ```scala
+    for x <- m yield x == m
+    ```
+
+   
+
+### Exceptions  : 
+
+Exceptions in Scala are defined similarly as in Java. 
+
+An exception class is any subclass of `java.lang.Throwable`, which has itself subclasses `java.lang.Exception` and `java.lang.Error`. Values of exception classes can be thrown.
+
+```scala
+try e[throw ex] catch case x: Exc => handler
+
+def validatedInput(): String =
+    try getInput()
+    catch
+        case BadInput(msg) => println(msg); validatedInput()
+        case ex: Exception => println(”fatal error; aborting”);
+
+```
+
+We can treat exceptions like normal types. `scala.util.Try` type enables this. 
+
+```scala
+abstract class Try[+T]
+    case class Success[+T](x: T) extends Try[T]
+    case class Failure(ex: Exception) extends Try[Nothing]
+
+Try(expr) // gives Success(someValue) or Failure(someException)
+
+```
+
+here's an implementation: 
+
+```scala
+Here’s an implementation of Try.apply:
+import scala.util.control.NonFatal
+object Try:
+def apply[T](expr: => T): Try[T] =
+	try Success(expr)
+	catch 
+		case NonFatal(ex) => Failure(ex)
+```
+
+`FlatMap` and `map`are defined on exceptions , can use `for`
+
+```scala
+for
+	x <- computeX
+	y <- computeY
+yield f(x, y)
+// if computeX/computeY returns Success(x)/Success(Y) we get Success(f(x,y))
+// else we get Failure(ex)
+```
+
+```scala
+extension [T](xt: Try[T]):
+
+    def flatMap[U](f: T => Try[U]): Try[U] = xt match
+        case Success(x) => try f(x) catch case NonFatal(ex) => Failure(ex)
+        case fail: Failure => fail
+    def map[U](f: T => U): Try[U] = xt match
+        case Success(x) => Try(f(x))
+        case fail: Failure => fail
+
 ```
 
