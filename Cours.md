@@ -233,7 +233,7 @@ class Rational(x: Int, y: Int):
     def numer = x / gcd(x, y) // these are recalcaled at each call 
     def denom = y / gcd(x, y) // BAD IDEA
 	
-	// BETTER IDEA : VARIABLES : 
+	// BETTER IDEA : IMMUTABLE VARIABLES : 
 	val numer = x / gcd(x, y)
 	val denom = y / gcd(x, y)
 
