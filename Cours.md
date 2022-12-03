@@ -2094,3 +2094,146 @@ def reduce[T: Monoid](xs: List[T]): T =					// Monoid[T] is a call
 `Viewers ?=> List[Paper]` is called an implicit function type. 
 It simply means that the argument of type `Viewers` will be implicit. 
 
+## Week 11 : 
+
+### Functions and State :
+
+Until now , we have used the substitution **principle of evaluation**. 
+Expression are evaluated by rewriting some parts of them, 
+
+```scala
+sumOfSquares(3, 2+2)
+=> sumOfSquares(3, 4 )
+=> square(4) + square(4) // substitution 
+
+// Generally : 
+def f(x1, ..., xn) = B; ... f(v1, ..., vn)
+→ def f(x1, ..., xn) = B; ... [v1/x1, ..., vn/xn] B 
+
+// bigger example 
+def iterate(n: Int, f: Int => Int, x: Int) =
+	if n == 0 then x else iterate(n-1, f, f(x))
+def square(x: Int) = x * x
+
+//Then the call iterate(1, square, 3) gets rewritten as follows:
+→ if 1 == 0 then 3 else iterate(1-1, square, square(3))
+→ iterate(0, square, square(3))
+→ iterate(0, square, 3 * 3)
+→ iterate(0, square, 9)
+→ if 0 == 0 then 9 else iterate(0-1, square, square(9)) → 9
+
+```
+
+ All possible way of rewriting lead to the same result, that is because our programs are *side effect free.* 
+
+**Stateful Objects :** their values may vary , depending on when you call them(values). 
+
+```scala
+val account = BankAccount() // account: BankAccount = ...
+account.deposit(50) //
+account.withdraw(20) // res1: Int = 30
+account.withdraw(20) // res2: Int = 10
+account.withdraw(15) // java.lang.Error: insufficient funds
+```
+
+#### Identity and Change: 
+
+```scala
+val x = BankAccount()
+val y = BankAccount()
+```
+
+*Question:* Are x and y the same?
+
+*A* : It depends how we define "same". 
+
+> We define it by the property of **operational equivalence** : 
+>
+> x and y are operationally equivalent if no possible test can distinguish between them.
+
+To test if x and y are the same, we must
+
+* Execute the definitions followed by an arbitrary sequence of operations `S` that involves `x` and `y`, observing the possible outcomes.
+
+````scala
+val x = BankAccount() 					val x = BankAccount() 					val y = BankAccount() 					val y = BankAccount() 					f(x, y) 								f(x, x) // should give same result 
+// S 									// S'
+````
+
+* Then, execute the definitions with another sequence `S` obtained by renaming all occurrences of `y` by `x` in `S` 
+*  If the results are different, then the expressions `x` and y are certainly different.
+
+example : 
+
+```scala
+val x = BankAccount()
+val y = BankAccount()
+x.deposit(30) // val res1: Int = 30
+y.withdraw(20) // java.lang.Error: insufficient funds
+
+val x = BankAccount()
+val y = BankAccount()
+x.deposit(30) // val res1: Int = 30
+x.withdraw(20) // val res2: Int = 10
+// The final results are different. We conclude that x and y are not the same.
+```
+
+Clearly , we cannot use *substitution* here , otherwise we would get: 
+
+```scala
+val x = BankAccount() 						val x = BankAccount()
+val y = x 						=>			val y = BankAccount()
+```
+
+ which is not correct. 
+
+### Loops :
+
+**Proposition**: Variables are enough to model all imperative programs. 
+
+It's because we can create loops from functions . 
+
+* `while` loops : 
+
+```scala
+while i > 0 do { r = r * x; i = i - 1 } // scala build-in while loop 
+```
+
+```scala
+// if we had to create it from functions 
+def whileDo(condition: => Boolean)(command: => Unit): Unit =
+	if condition then
+		command
+		whileDo(condition)(command)
+	else ()						// function of type Unit that does nothing 
+```
+
+* `repeatUntil { command } ( condition )` loop : 
+
+  ```scala
+  def repeatUntil(command: => Unit)(condition: => Boolean) : Unit =
+  	command 
+  	if !condition then repeatUntil (command)(condition)
+  	else () 
+  // Using it 
+  ```
+
+  
+
+* `for` loops : 
+
+```scala
+for i <- 1 until 3 do System.out.print(s”$i ”) // scala for 
+// gets translated to 
+
+(1 until 3).foreach( i => System.out.print(s”$i ”) )
+
+def foreach(f: T => Unit): Unit =
+	// apply ‘f‘ to each element of the collection
+
+Example: 
+for i <- 1 until 3; j <- ”abc” do println(s”$i $j”)
+	translates to:
+(1 until 3).foreach(i => ”abc”.foreach(j => println(s”$i $j”)))
+```
+
