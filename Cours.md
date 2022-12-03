@@ -736,7 +736,15 @@ trait Function1[-T, +U]:
 	def apply(x: T): U
 ```
 
-
+> **Variance rules** : 
+>
+> Roughly , 
+>
+> ▶ covariant type parameters can only appear in method results. 
+>
+> ▶ contravariant type parameters can only appear in method parameters.
+>
+>  ▶ invariant type parameters can appear anywhere.
 
 ## Week 5 : 
 
@@ -1540,4 +1548,549 @@ extension [T](xt: Try[T]):
         case fail: Failure => fail
 
 ```
+
+
+
+## Week 9 : 
+
+### Structural induction on Trees :
+
+To prove a property $P(t)$ for all trees $t$ of a certain type : 
+
+* show that $P(l)$ holds for all leaves l of a tree, 
+
+*  for each type of internal node t with subtrees $s_1, ..., s_n$, show that $P(s_1) ∧ ... ∧ P(s_n) $ implies $P(t)$ .
+
+Let's show : `s.incl(x).contains(x) = true`
+
+recall `Inset`
+
+```scala
+abstract class IntSet:
+	def incl(x: Int): IntSet
+	def contains(x: Int): Boolean
+object Empty extends IntSet:
+	def contains(x: Int): Boolean = false
+	def incl(x: Int): IntSet = NonEmpty(x, Empty, Empty)
+
+case class NonEmpty(elem: Int, left: IntSet, right: IntSet) extends IntSet:
+    def contains(x: Int): Boolean =
+        if x < elem then left.contains(x)
+        else if x > elem then right.contains(x)
+        else true
+    def incl(x: Int): IntSet =
+        if x < elem then NonEmpty(elem, left.incl(x), right)
+        else if x > elem then NonEmpty(elem, left, right.incl(x))
+        else this
+```
+
+
+
+**Base case :** `Empty` : 
+
+```scala
+Empty.incl(x).contains(x) 
+= NonEmpty(x, Empty, Empty).contains(x) // by definition of Empty.incl
+= true 								   // by definition of NonEmpty.contain
+```
+
+**Inductive step: **
+
+for left and right subtrees `l` and `r` , we have :  
+
+`l.incl(x).contains(x) = true` and `r.incl(x).contains(x) = true`
+
+* `y == x` 
+
+  ```scala
+  NonEmpty(x, l, r).incl(x).contains(x)
+  = NonEmpty(x, l, r).contains(x) // by definition of NonEmpty.incl
+  = true // by definition of NonEmpty.contain
+  ```
+
+* `y < x` 
+
+  ```scala
+  NonEmpty(y, l, r).incl(x).contains(x)
+  = NonEmpty(y, l, r.incl(x)).contains(x) // by definition of NonEmpty.incl
+  = r.incl(x).contains(x) // by definition of NonEmpty.contains
+  = true // by the induction hypothesis
+  ```
+
+* case `y > x`  is analogous
+
+### Lazy Lists : 
+
+We want to find the n-th prime between `from` and `to`: 
+
+```scala
+(4 to 10000).filter(isPrime)(1)
+```
+
+This works but is terrible performance wise. 
+
+> **Lazy principle :** Avoid computing the elements of a sequence until they are needed for the evaluation result (which might be never).
+
+We define `LazyList`: 
+
+* `LazyList.cons` ( can be also written `#::` equivalent` to `::` for normal Lists. 
+* `LazyList.empty` equivalent to `Nil` for normal Lists. 
+
+They are only evaluated on demand. 
+
+  ````scala
+  def lazyRange(lo: Int, hi: Int): LazyList[Int] =
+      if lo >= hi then LazyList.empty
+      else LazyList.cons(lo, lazyRange(lo + 1, hi))
+  
+  lazyRange(4,10000).filter(isPrime)(1)
+  => LazyList.con(4,lazyRange(5,10000)).filter(isPrime)(1) // by def of lazyRange
+  => lazyRange(5,10000).filter(isPrime)(1)				// by filter 
+  => LazyList.con(5,lazyRange(6,10000)).filter(isPrime)(1) // by def of lazyRange
+  => lazyRange(6,10000).filter(isPrime)(0)				// def of apply 
+  => lazyRange(6,lazyRange(7,10000)).filter(isPrime)(0) // by def of lazyRange
+  => lazyRange(7,10000).filter(isPrime)(0) 				// def of filter 
+  => LazyList.con(7,lazyRange(8,10000)).filter(isPrime)(0) // def of lazy range
+  => 7 
+  ````
+
+**Lazy evaluation :** 
+
+```scala
+lazy val x = expr // only evaluated the first time it is used , not immediately 
+```
+
+Ex : 
+
+```scala
+def expr = 
+	val x = {print("x");1}
+	lazy val y = {print("y");2}
+	def z = {print("z");3}
+	z+y+x+z+y+x
+// what printed ? xzyz
+```
+
+Using `lazy` , we can implement a tail-lazy list: 
+
+```scala
+def cons[T](hd: T , tl => LazyList[T]) = new TaiLazyList[T]:
+	def head = hd 
+	lazy val tail = tl 
+```
+
+### Infinite sequences : 
+
+```scala
+def from(n:Int) : LazyList[Int] = n #:: from(n+1) 
+val nats = from(0)	 // all naturals 
+nats.take(10).toList // :List[Int] = List(1,2,...,9)
+```
+
+A useful application : 
+
+```scala
+def sieve(s: LazyList[Int]): LazyList[Int] =
+	s.head #:: sieve(s.tail.filter(_ % s.head != 0)) // filter all multiples of head 
+val primes = sieve(from(2))	// all primes in a lazyList 
+```
+
+
+
+## Week 10 :
+
+ ### Contextual Abstraction : 
+
+Let's try to make the sort function more context independent. 
+
+```scala
+def msort(xs: List[Int]): List[Int] = 	// we want more general 
+=> def msort[T](xs: List[T]): List[T] = // problem we don't know to compare any type T
+=> def msort[T](xs: List[A])(lessThan: (T, T) => Boolean): List[T] = 
+										// solution : add a comparison function 
+```
+
+there's already a class that does orderings , it is `scala.math.Ordering[A`
+
+```scala
+def msort[T](xs: List[T])(ord: Ordering[T]): List[T] =
+...
+... if ord.lt(x, y) then ...
+```
+
+Problem: Passing around Ordering arguments is cumbersome. 
+
+```scala
+sort(ints)(Ordering.Int) 		// most of the time we use the same ordering 
+sort(strings)(Ordering.String)	// to sort lists of integers , strings ...
+```
+
+We can reduce the boilerplate by making `ord` an **implicit** parameter.
+
+```scala
+def sort[T](xs: List[T])(using ord: Ordering[T]): List[T] = ...
+```
+
+Then, calls to sort can omit the `ord` parameter:
+
+```scala
+sort(ints)						// becomes sort[Int](ints)
+sort(strings)					// becomes sort[String](strings)
+```
+
+We have seen that the compiler is able to infer types (`Int`) from values (`ints`) => **Type inference**. 
+
+```scala
+sort[Int](ints)			// becomes sort[Int](ints)(using Ordering.Int) 
+sort[String](strings)	// becomes sort[String](strings)(using Ordering.String)
+```
+
+The Scala compiler is also able to do the opposite, namely to infer expressions (aka terms) from types. => **Term inference**. 
+
+### Using clauses : 
+
+An implicit parameter is introduced by a `using` parameter clause:
+
+```scala
+def f( x:Int )(using a:Int ) : Int = ... 
+f(5)(using 3) // we can also omit it and write 
+f(5)	 	  // it is optional 
+```
+
+**Syntax :**
+
+```scala
+//Multiple parameters can be in a using clause:
+def f(x: Int)(using a: A, b: B) = ...
+f(x)(using a, b)			// notes a AND b are implicit 
+//Or, there can be several using clauses in a row:
+def f(x: Int)(using a: A)(using b: B) = ...
+//using clauses can also be freely mixed with regular parameters:
+def f(x: Int)(using a: A)(y: Boolean)(using b: B) = ...
+f(x)(using a)(y)(using b)
+```
+
+
+
+Parameters of a using clause can be anonymous: 
+
+```scala
+def sort[T](xs: List[T])(using Ordering[T]): List[T] = ... 
+... merge(sort(fst), sort(snd)) // the ordering will be passed to merge (see below how)
+```
+
+
+
+#### Context bound : 
+
+Sometimes one can go further and replace the using clause with a context bound for a type parameter.
+
+```scala
+def printSorted[T](as: List[T])(using Ordering[T]) =
+	println(sort(as))
+// becomes 
+def printSorted[T: Ordering](as: List[T]) =
+	println(sort(as))
+```
+
+It means that "there must be an instance of `Ordering` that is defined on `T`" ( it is passed to sort) . 
+
+```scala
+def f [T](ps)(using U1[T], . . . ,Un[T]) : // becomes 
+def f [T : U1 . . . : Un](ps) : R = ...  // T has instances of U1 ... Un defined on it. 
+```
+
+
+
+### Given instances : 
+
+For the compiler to find the right value of the implicit (`using`) parameter, there must be a given instance: 
+
+```scala
+object Ordering:
+//given <name of given istance> : Class[T] with ...  
+given Int: Ordering[Int] with
+	def compare(x: Int, y: Int): Int =
+        if x < y then -1 else if x > y then 1 else 0	
+```
+
+Given instances can be anonymous. Just omit the instance name:
+
+```scala
+given Ordering[Double] with
+	def compare(x: Int, y: Int): Int = ...
+```
+
+The compiler will synthesize a name for an anonymous instance:
+
+```scala
+given given_Ordering_Double : Ordering[Double] with // example of name generated
+	def compare(x: Int, y: Int): Int = ...			// by the compiler 
+```
+
+```scala
+summon[Ordering[Int]]		// => Ordering.Int					| in this
+summon[Ordering[Double]]	// => Ordering.given_Ordering_Double | case 
+
+def summon[T](using x: T) = x // predefined 
+```
+
+
+
+Say, a function takes an implicit parameter of type `T`. The compiler will search a *given instance* that: 
+
+* has a type compatible with T . ( of type `T` , a subtype of `T` ... ) 
+
+* is **visible** at the point of the function call, or is defined in a companion object **associated** with `T`.
+
+  * **visible :** 
+
+    1. inherited,imported or defined in an enclosing scope. 
+
+  * **associated :** 
+
+    1.  companion objects associated with any of `T`'s inherited types. 
+
+       ```scala
+       trait X
+       trait Y extends X
+       // if a given instance of X is required , compiler will look in Y's compiler  
+       ```
+
+    2. companion objects associated with any type argument in `T` . 
+
+       ```scala
+       trait Foo[T]
+       trait Bar[T] extends Foo[T] 
+       // if a given instance of Bar[X] is required, compiler will look in X 
+       // X here is the type argument 
+       // Foo[X] will be looked into by the compiler 
+       ```
+
+    3. if `T` is an inner class, the outer objects in which it is embedded.
+
+ If there is a *single* (*most specific*) instance => it is taken as actual arguments Otherwise it's an error.
+
+#### Importing Given instances : 
+
+1. By-name:
+
+   ```scala
+   import scala.math.Ordering.Int
+   ```
+
+2. By-type:
+
+   ```scala
+   import scala.math.Ordering.{given Ordering[Int]}
+   import scala.math.Ordering.{given Ordering[?]}
+   ```
+
+3. With a wildcard:  
+
+   ```scala
+   import scala.math.given
+   ```
+
+   
+
+**Possible errors :** 
+
+```scala
+//If there is no available given instance matching the queried type, an error
+//is reported:
+def f(using n: Int) = ()
+f
+^
+//error: no implicit argument of type Int was found for parameter n of method f
+
+// If more than one given instance is eligible, an ambiguity is reported:
+trait C:
+	val x: Int
+	given c1: C with
+		val x = 1
+	given c2: C with
+		val x = 2
+	f(using c: C) = ()
+f
+
+//error: ambiguous implicit arguments:
+//both value c1 and value c2
+//match type C of parameter c of method f
+
+```
+
+**Priorities :** 
+
+Several given instances matching the same type don't generate an ambiguity *if one is more specific than the other.*
+
+`given a:A` is more specific than a definition `given b : B` if : 
+
+* a is in a closer lexical scope than b, or 
+*  a is defined in a class or object which is a subclass of the class defining b, or
+*  type A is a generic instance of type B, or 
+* type A is a subtype of type B.
+
+```scala
+//example 1 : 
+class A[T](x: T)
+	given universal[T](using x: T): A[T](x)
+	given specific: A[Int](2)
+summon[A[Int]] // specific
+
+// example 2 : 
+trait A:
+	given ac: C
+trait B extends A:
+	given bc: C
+object O extends B:
+val x = summon[C] // bc 
+// example 3 : 
+given ac: C
+def f() =
+	given b: C
+	def g(using c: C) = ()
+g // b will be chosen 
+
+```
+
+### Type classes :
+
+Let's consider `Ordering[T]` , it is a recurring pattern and is called **type classes**: generic classes that come with given instances for each type. 
+
+```scala
+def sort[A: Ordering](xs: List[A]): List[A] = ...
+```
+
+ At compile time , the compile resolves the right instance of Ordering to use => It is a form of polymorphism. 
+
+
+
+#### Conditional instances :
+
+Q: define an ordering for list. 
+
+A: We need ordering for its elements. 
+
+```scala
+given listOrdering[A](using ord: Ordering[A]): Ordering[List[A]] with
+
+
+def sort[A](xs: List[A])(using Ordering[A]): List[A] = ...
+val xss: List[List[Int]] = ...
+sort(xss)
+// Given instances here will be resolved recursively 
+// => sort[List[Int]](xss)
+// => sort[List[Int]](xss)(using listOrdering)
+// => sort[List[Int]](xss)(using listOrdering(using Ordering.Int))
+```
+
+**Type classes and extension methods: **
+
+```scala
+trait Ordering[A]:
+	def compare(x: A, y: A): Int
+	extension (x: A)
+        def < (y: A): Boolean = compare(x, y) < 0
+        def <= (y: A): Boolean = compare(x, y) <= 0
+        def > (y: A): Boolean = compare(x, y) > 0
+        def >= (y: A): Boolean = compare(x, y) >= 0
+```
+
+Q : When are these extensions *visible* ?
+
+A : When given instance is visible.  
+
+```scala
+def merge[T: Ordering](xs: List[T], ys: List[T]): Boolean = (xs, ys) match
+    case (Nil, _) => ys
+    case (_, Nil) => xs
+    case (x :: xs1, y :: ys1) =>
+        if x < y then x :: merge(xs1, ys)	else y :: merge(xs, ys1)
+
+//	▶ There’s no need to name and import the Ordering instance to get
+//	access to the extension method < on operands of type T.
+//	▶ We have an Ordering[T] instance in scope, that’s where the extension
+//	method comes from.
+```
+
+Type classes provide a way to turn types into values. Unlike class extension, type classes : 
+
+* can be defined at any time without changing existing code.
+* can be conditional.
+
+
+
+### Abstract algebra and type classes : 
+
+Type classes let one define concepts that are quite abstract, and that can be instantiated with many types. For instance:
+
+```scala
+trait SemiGroup[T]:							//	A set with an associative 
+	extension (x: T) def combine (y: T): T	//	operation , combine 
+
+// we can then define methods that work for any group 
+def reduce[T: SemiGroup](xs: List[T]): T =
+	xs.reduceLeft(_.combine(_))
+```
+
+We can have hierarchies in type classes. 
+
+```scala
+trait Monoid[T] extends SemiGroup[T]:	// a semigroup with unit element  
+	def unit: T						   // the unit element 
+```
+
+We want to write `reduce` on this function  : 
+
+```scala
+def reduce[T](xs: List[T])(using m: Monoid[T]): T =	
+	xs.foldLeft(m.unit)(_.combine(_))
+// We can use Context bounds 
+def reduce[T: Monoid](xs: List[T]): T =					// there should exist
+	xs.reduceLeft(summon[Monoid[T]].unit)(_.combine(_))	// Monoid[t]
+
+// A simpler calling syntax can be obtained if we do some preparation in the
+// Monoid trait itself.
+trait Monoid[T] extends SemiGroup[T]:
+	def unit: T
+object Monoid:
+	def apply[T](using m: Monoid[T]): Monoid[T] = m
+// then 
+def reduce[T: Monoid](xs: List[T]): T =					// Monoid[T] is a call
+	xs.reduceLeft(Monoid[T].unit)(_.combine(_))			// to apply 
+```
+
+#### Important remarks :  
+
+* **Context passing :** We often use implicit parameters to pass pieces of context (data) that can change , but rarely do. 
+
+* **Tamper proofing :** 
+
+  ```scala
+  object ConfManagement:
+      type Viewers = Set[Person]
+      class Conference(ratings: (Paper, Int)*):
+      	private val realScore = ratings.toMap
+  		// if a viewer in viewer is an author we don't return his paper 
+  		def rankings(viewers: Viewers): List[Paper]: 
+  			papers.sortBy(score(_, viewers)).reverse 
+  ```
+
+  ​	*Problem* : One can do `conf.rankings(Set()).takeWhile(conf.score(_, Set()) > 80)` and have 	all the papers. 
+
+  ​	*Fix* : Make the Viewers type alias `opaque`: 
+
+  ````scala
+  opaque type Viewers = Set[Person]
+  ````
+
+  the equality `Viewers = Set[Person]` is known only within the scope where the alias is defined. (in this case, within the `ConfManagement` object).
+
+  Everywhere else `Viewers` is treated as a separate, `abstract` type. 
+
+#### Implicit Function types :
+
+`Viewers ?=> List[Paper]` is called an implicit function type. 
+It simply means that the argument of type `Viewers` will be implicit. 
 
