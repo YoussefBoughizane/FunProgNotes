@@ -2237,3 +2237,333 @@ for i <- 1 until 3; j <- ”abc” do println(s”$i $j”)
 (1 until 3).foreach(i => ”abc”.foreach(j => println(s”$i $j”)))
 ```
 
+
+
+
+
+## Week 12 :  Creating an interpreter for functional language 
+
+### I1 : Arithmetic and if statements : 
+
+We will use trees to represent our operations : 
+
+```scala
+enum Expr
+	case C(c: BigInt) // integer constant
+	case BinOp(op: BinOps, e1: Expr, e2: Expr) // binary operation
+	case IfNonzero(cond: Expr, trueE: Expr, falseE: Expr)
+
+enum BinOps
+	case Plus, Minus, Times, Power, LessEq
+
+// How to write Code in this language ? 
+
+val expr1 = BinOp(Times, C(6), C(7)) // 6 * 7
+val cond1 = BinOp(LessEq, expr1, C(50)) // expr1 <= 50
+val expr2 = IfNonzero(cond1, C(10), C(20)) // if (cond1) 10 else 20
+
+// To get their values, apply eval 
+eval(expr1) // returns  42 
+```
+
+Our `eval` function will always return `BigInt` : 
+
+```scala
+def eval(e: Expr): BigInt = e match
+	case C(c) => c	                
+	case BinOp(op, e1, e2) =>
+		evalBinOp(op)(eval(e1), eval(e2))
+	case IfNonzero(cond, trueE, falseE) =>	
+		if eval(cond) != 0 then eval(trueE) else eval(falseE)
+```
+
+### I2 : Absolute value and desugaring  : 
+
+We want to add absolute value to our language: 
+
+```scala
+case AbsValue(arg: Expr): 
+	...
+	case AbsValue(arg: Expr)
+```
+
+Notice that absolute value can already be written with elements already present in our language ( if , comparison and minus ) : 
+
+```scala
+IfNonzero(  BinOp(LessEq, x, C(0))  ,  BinOp(Minus, C(0), x)   ,x)
+```
+
+so what we are doing is just adding **syntactic sugar** (facilitating syntax for already possible operations ). 
+
+We can add a `case` in our `eval` function , or we can simply **desugar** `AbsValue`.
+
+```scala
+def desugar(e: Expr): Expr = e match
+    case C(c) => e
+    case BinOp(op, e1, e2) => BinOp(op, desugar(e1), desugar(e2))
+    case IfNonzero(cond, trueE, falseE) =>
+      IfNonzero(desugar(cond), desugar(trueE), desugar(falseE))
+    case AbsValue(arg) =>
+      val x = desugar(arg)
+      IfNonzero(BinOp(LessEq, x, C(0))  ,  BinOp(Minus,C(0),x)  ,   x)
+// the result will be an expression that uses I1 elements 
+```
+
+ This we will execute this function before using `eval`. 
+
+### I3 : Recursive function definition : 
+
+we will add functions to our program : 
+
+```scala
+enum Expr
+    case C(c: BigInt)
+    case BinOp(op: BinOps, e1: Expr, e2: Expr)
+    case IfNonzero(cond: Expr, trueE: Expr, falseE: Expr)
+    // New expressions N for name and Call 
+
+    case N(name: String) // immutable variable
+	case Call(function: String, args: List[Expr]) // function is the function's 	name
+
+// mapping from list of param to body 
+case class Function(params: List[String], body: Expr) 
+type DefEnv = Map[String, Function] // function names to definitions
+```
+
+let's create an environment definition , that contains a function definition `square`: 
+
+```scala
+val defs : DefEnv = Map[String, Function](
+    "square" -> Function(List("n"), // formal parameter "n", body:
+    					BinOp(Times, N("n"),N("n") )
+) 
+```
+
+#### eval  using substitution : 
+
+```scala
+def eval(e: Expr): BigInt = e match
+    case C(c) => c
+    case N(n) => error(s"Unknown name '$n'") // should never occur
+    case BinOp(op, e1, e2) =>
+    	evalBinOp(op)(eval(e1), eval(e2))
+    case IfNonzero(cond, trueE, falseE) =>
+    	if eval(cond) != 0 then eval(trueE)
+    	else eval(falseE)
+
+	// INTERISTING STUFF STARTS HERE
+    case Call(fName, args) =>
+        defs.get(fName) match // defs is a global map with all functions
+        case Some(f) => // f ( body:Expr ,  params:List[String] ) 
+            
+			val evaledArgs = args.map((e: Expr) => C(eval(e))) 
+			// we need to substitute args in the body of f 
+            val bodySub = substAll(f.body, f.params, evaledArgs)
+
+            eval(bodySub) // may contain further recursive calls
+
+    // bodySub should no longer have N(...)
+
+def substAll(e: Expr, names: List[String], replacements: List[Expr]): Expr =
+	// replacing multiple arguments 
+    (names, replacements) match
+    case (n :: ns, r :: rs) => substAll(subst(e,n,r), ns, rs)
+    case _ => e
+
+def subst(e: Expr, n: String, r: Expr): Expr = e match
+	// substiture names n in r 
+
+    case C(c) => e                     // nothing to substitute 
+    case N(s) => if s==n then r else e // substite 
+    case BinOp(op, e1, e2) => BinOp(op, subst(e1,n,r), subst(e2,n,r))
+
+    case IfNonzero(c, trueE, falseE) =>
+    	IfNonzero(subst(c,n,r), subst(trueE,n,r), subst(falseE,n,r))
+    
+	case Call(f, args) =>
+    	Call(f, args.map(subst(_,n,r)))
+
+```
+
+
+
+#### eval using environment : 
+
+Instead of substituting , we will save results in `env`. 
+
+```scala
+def evalE(e: Expr, env: Map[String, BigInt]): BigInt = e match
+    ... // same as earlier 
+	case N(n) => env(n) // look up name in the environment
+    case Call(fName, args) =>
+    	defs.get(fName) match        // get function name 
+            case Some(f) =>    
+			// evaluate args with current environment 
+            val evaledArgs = args.map( (e: Expr) => evalE(e,env) ) 
+            
+            // evalue body with env and definitions coming from args 
+		
+            val newEnv = env ++ f.params.zip(evaledArgs)
+            evalE(f.body, newEnv)
+```
+
+### Higher order functions : 
+
+
+
+#### I4 : Naive substittution : 
+
+We assume our program will be written in *curried* form that is why all functions take one argument. 
+
+```scala
+enum Expr
+    ... // same as earlier 
+    case Call(fun: Expr, arg: Expr) 		// fun can be expression itself
+    case Fun(param: String, body: Expr)		// param => body
+
+def eval(e: Expr): Expr = e match
+    case C(c) => e
+    case N(n) => eval(defs(n))				// find in global defs, then eval
+    ...
+	case Fun(_,_) => e 						// functions evaluate to themselves
+    case Call(fun, arg) =>
+    	eval(fun) match
+    	case Fun(n,body) => eval(subst(body, n, eval(arg)))
+
+
+def subst(e: Expr, n: String, r: Expr): Expr = e match
+	... // like earlier 
+    case Call(f, arg) =>
+    	Call(subst(f,n,r), subst(arg,n,r)) // different here is we substitute in 											function
+    case Fun(formal,body) =>
+        if formal==n then e // do not substitute under (n => ...)
+							// because n in body is not n outside 
+        else Fun(formal, subst(body,n,r)) // otherwise substitute in body 
+```
+
+there is a problem here : **variable capture**: 
+
+We have the *function* `fact` . 
+
+FUN : `f  => ( fact => f ( f fact )  ) ` ( takes $f$ and returns $fof$ )
+
+ARG : ` fact ` ( the actual factorial function ` (n => (if n then (* n (fact (- n 1))) else 1))`)
+
+We expect the function $(factorial)o (factorial) $ as return value. 
+
+```scala
+// CODE EXECUTION 
+Call( f  => ( fact => f ( f fact ) ) , fact ) 
+//  | n |  |		body 		   | | arg |
+//case Fun(n,body) => eval(subst(body, n, eval(arg)))
+eval(  subst ( fact => f ( f fact ),f,fact)  )
+
+subst ( fact => f ( f fact ) ) , f , fact)
+
+subst( f ( f fact ) , f , fact )
+// this will provoque f ( f fact ) ) to be replaced with 
+// fact ( fact fact ) where fact is THE FUNCTION not the formal argument
+// so the result of substitution is lse 1))
+// fact => fact ( fact fact )
+// when we call it with arg = 3 
+// 3 => 3 ( 3 3 )
+//			 ^ 
+// 			 | function evaluation 
+java.lang.Exception: Cannot apply non-function 3 in a call
+```
+
+Expressing this problem in the general case : 
+
+```scala
+case Fun(formal,body) =>
+    if formal==n then e // do not substitute under (n => ...)
+    else Fun(formal, subst(body,n,r))
+```
+
+The last line exhibits **variable capture problem.** If `formal` occurs free in `r`, then it will be captured by `Fun(formal,...)` even though that outside occurrence of `formal`  in `r` has nothing to do with the bound variable in the anonymous function.
+
+
+
+#### I5 : Renaming Bound Variables in Substitution : 
+
+```scala
+// old substitution 
+def subst0(e: Expr, n: String, r: Expr): Expr = e match ...
+	case Fun(formal,body) =>
+		if formal==n then e else Fun(formal, subst0(body,n,r))
+
+// To avoid problems, we use capture-avoiding substitution:
+
+def subst(e: Expr, n: String, r: Expr): Expr = e match ...
+    case Fun(formal,body) =>
+        if formal==n then e else
+        val fvs = freeVars(r)
+        val (formal1, body1) =			// if free in r 
+            if fvs.contains(formal) then // rename formal 
+                val formal1 = differentName(formal, fvs)
+                (formal1, subst0(body, formal, N(formal1)))
+        	else (formal, body)
+        Fun(formal1, subst(body1,n,r)) // substitute either way
+
+```
+
+What is `freeVars` ? 
+
+```scala
+def freeVars(e: Expr): Set[String] = e match
+    case C(c) => Set()
+    case N(s) => Set(s)
+    case BinOp(op, e1, e2) => freeVars(e1) ++ freeVars(e2)
+    case IfNonzero(cond, trueE, falseE) =>
+    	freeVars(cond) ++ freeVars(trueE) ++ freeVars(falseE)
+    case Call(f, arg) => freeVars(f) ++ freeVars(arg)
+    case Fun(formal,body) => freeVars(body) - formal
+```
+
+
+
+#### High order with environment : 
+
+we will know consider functions as variables that can be returned by `eval`
+
+```scala
+enum Value
+    case I(i: BigInt)
+    case F(f: Value => Value)
+type Env = Map[String, Value]
+
+def evalEnv(e: Expr, env: Map[String, Value]): Value = e match
+	... // not very interesting 
+    case Fun(n,body) => Value.F{(v: Value) =>
+          evalEnv(body, env + (n -> v)) }
+    case Call(fun, arg) => evalEnv(fun,env) match
+          case Value.F(f) => f(evalEnv(arg,env))
+          case _ => error(s"Non-function arg $fun in $fun($arg)")
+
+```
+
+### I07: Nested recursive definitions using environments: 
+
+So far , we could create locally anonymous functions, but without a way to call them recursively.
+
+```scala
+def evalEnv(e: Expr, env: Env): Value = e match ...
+    case N(n) => env(n) match // no use of defs, only env
+    case Some(v) => v
+    case Fun(n,body) => Value.F{(v: Value) => // same as before
+        val env1: String => Option[Value] =
+        (s:String) => if s==n then Some(v) else env(s)
+	    evalEnv(body, env1) }
+    case Call(fun, arg) => evalEnv(fun,env) match // same
+    case Value.F(f) => f(evalEnv(arg,env))
+    case Defs(defs, rest) => //
+        def env1: Env = // extended environment
+        (s:String) =>
+        lookup(defs, s) match // list lookup in local defs
+    case None => env(s) // fall back to outer scope	
+	case Some(body) => Some(evalEnv(body, env)) // nonrec
+evalEnv(rest, env1)
+
+```
+
+explanation coming soon . 
