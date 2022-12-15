@@ -2567,3 +2567,62 @@ evalEnv(rest, env1)
 ```
 
 explanation coming soon . 
+
+## Week 12 : 
+
+### Church numerals : 
+
+Church numerals are alternative ways of expressing natural numbers , using functions :
+
+```scala
+def zero   = (f => x => x)
+def one    = (f => x => f x)
+def two    = (f => x => f (f x))
+def three  = (f => x => f (f (f x)))
+```
+
+Number `n` is a function that takes a function `f` and applies it `f` times to `x`.
+
+Number is $n$ expressed by : the function that maps $f$ to it's n-fold composition. 
+
+​																$ f^{\circ n} : f \mapsto \underbrace{ f \circ f ... \circ f }_{\text{n times }}$
+
+**Addition ** 
+
+```scala
+def addition = (m => n => f => x => m f (n f x)) 		// n + m in church numerals 
+```
+
+Notice that `n` and `m` are *church numerals*.  let's apply it 
+
+```scala
+addition (two) (three) = f => ( x => two f ( three f x ) )
+f => x => ((f => (x => (f (f x)))) f) ((f => x => (f (f (f x)))) f x)
+// 		  |	         two            |     |        three       |
+// let's apply it to F we expect to get x => F F F F F x
+x => ((f => (x => (f (f x)))) F) ((f => x => (f (f (f x)))) F x) // <-> 
+(x => (F (F x))) (F (F (F X)))
+(x => F ( F ( F ( F ( F x ))))  // yay 	
+```
+
+**How to check if a church numeral is non zero ?** 
+
+Given a numeral `n`, like one for two: `f => x => f (f x)` How can we apply it to some expressions to get the effect of : `ifNonzero n then eTrue else eFalse` 
+
+as `n : f => x => .. ` is a function , we will pass to it `f` and `x`
+
+```scala
+(n (arg => _ => eTrue) (_ => eFalse)) d
+// suppose n = zero = f => x => x 
+~~>(f => x => x) (arg => _ => eTrue) (_ => eFalse) d
+~~>( x => x )(_=>eFalse) d 
+~~>(_=>eFalse)d 
+~~>eFalse
+
+// Suppose n is one, f => x => f x. Then:
+(f => x => f x) (arg => _ => eTrue) (_ => eFalse) d
+~~> (arg => _ => eTrue) (_ => eFalse) d
+~~> eTrue
+
+```
+
